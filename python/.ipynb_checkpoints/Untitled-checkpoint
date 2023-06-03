@@ -1,0 +1,154 @@
+import sys
+import glob
+import serial
+import pyttsx3
+import time
+import pymysql
+
+
+def serial_ports():
+    if sys.platform.startswith('win'):
+        ports = ['COM%s' % (i + 1) for i in range(256)]
+    result = []
+    for port in ports:
+        try:
+            s = serial.Serial(port)
+            s.close()
+            result.append(port)
+        except (OSError, serial.SerialException):
+            pass
+    return result
+ports=serial_ports()
+print(ports)
+if len(ports)>0:
+    portname=ports[0]
+else:
+    print("No Devices Connected")
+    
+
+# from IPython.display import clear_output
+
+# db = pymysql.connect("localhost","root","","gudallur" )
+ser = serial.Serial()
+
+ser.port = portname
+
+ser.baudrate = 9600
+ser.bytesize = serial.EIGHTBITS #number of bits per bytes
+ser.parity = serial.PARITY_NONE #set parity check: no parity
+ser.stopbits = serial.STOPBITS_ONE #number of stop bits
+#ser.timeout = None          #block read
+ser.timeout = 1            #non-block read
+#ser.timeout = 2              #timeout block read
+ser.xonxoff = False     #disable software flow control
+ser.rtscts = False     #disable hardware (RTS/CTS) flow control
+ser.dsrdtr = False       #disable hardware (DSR/DTR) flow control
+ser.writeTimeout = 2     #timeout for write
+
+try:
+    if ser.isOpen():
+        ser.close()
+except:
+    print("error")
+try: 
+    ser.open()
+except Exception:
+#     print ("error open serial port: " + str(e))
+    exit()
+    
+    
+ import cv2
+import numpy as np
+from keras.models import load_model
+model=load_model(r"C:\Users\HP\Desktop\python\model2-009.model")
+
+labels_dict={0:'without mask',1:'mask'}
+color_dict={0:(0,0,255),1:(0,255,0)}
+
+size = 4
+webcam = cv2.VideoCapture(0) #Use camera 0
+
+# We load the xml file
+classifier = cv2.CascadeClassifier(r'C:\Users\HP\Desktop\python\haarcascade_frontalface_default.xml')
+cnt=0
+det=0
+while True:
+    (rval, im) = webcam.read()
+    im=cv2.flip(im,1,1) #Flip to act as a mirror
+
+    # Resize the image to speed up detection
+    mini = cv2.resize(im, (im.shape[1] // size, im.shape[0] // size))
+
+    # detect MultiScale / faces 
+    faces = classifier.detectMultiScale(mini)
+
+    # Draw rectangles around each face
+    for f in faces:
+        (x, y, w, h) = [v * size for v in f] #Scale the shapesize backup
+        #Save just the rectangle faces in SubRecFaces
+        face_img = im[y:y+h, x:x+w]
+        resized=cv2.resize(face_img,(150,150))
+        normalized=resized/255.0
+        reshaped=np.reshape(normalized,(1,150,150,3))
+        reshaped = np.vstack([reshaped])
+        result=model.predict(reshaped)
+#         print(result)
+        
+        label=np.argmax(result,axis=1)[0]
+        cnt+=1
+        if label==0:
+            det-=1
+        else:
+            det+=1
+            
+        if cnt>100:
+            print(det)
+            if det>30:
+                
+                det=0
+                
+                while(True):
+                    try:
+                        svalues=ser.readline().decode('utf-8').rstrip()
+                        if svalues!="":
+                            print(svalues)
+                            
+                            engine = pyttsx3.init()
+                            engine.say(svalues)
+                            engine.runAndWait()
+                            break
+                    except:
+                        print("except")
+                        pass
+                if ser.isOpen():
+                    try:
+                        ser.write('A'.encode())
+                    except:
+                        print('error')
+                db = pymysql.connect(host='localhost',user='root',password='',database='smart_door')
+                c = db.cursor()
+                sql = "INSERT INTO `mask_violation`(`location`, `date`, `time`, `status`,`temperature`) VALUES ('calicut','"+str(dat)+"','"+str(ti)+"','"+str(re)+"','"+ svalues +"')"
+                c.execute(sql)
+                db.commit()
+                c.close()
+                db.close()
+                
+            det=0
+            cnt=0
+          
+      
+        cv2.rectangle(im,(x,y),(x+w,y+h),color_dict[label],2)
+        cv2.rectangle(im,(x,y-40),(x+w,y),color_dict[label],-1)
+#         cv2.putText(im, labels_dict[label], (x, y-10),cv2.FONT_HERSHEY_SIMPLEX,0.8,(0,0,255),2)
+        
+    # Show the image
+    cv2.imshow('LIVE',   im)
+    key = cv2.waitKey(10)
+    # if Esc key is press then break out of the loop 
+    if key == 27: #The Esc key
+        break
+# Stop video
+webcam.release()
+
+# Close all started windows
+cv2.destroyAllWindows()
